@@ -44,7 +44,8 @@ public class SQLExample {
 
     @Test
     public void testDynamicSQL() {
-        selectPerson(null,null,null);
+        System.out.println(selectPerson(null, null, null));
+        System.out.println(selectPerson("1", null, null));
     }
 
     public String selectPerson(final String id, final String firstName, final String lastName) {
