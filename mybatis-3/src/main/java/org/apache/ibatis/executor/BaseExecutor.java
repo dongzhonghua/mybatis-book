@@ -51,8 +51,6 @@ public abstract class BaseExecutor implements Executor {
   protected Executor wrapper;
 
   protected ConcurrentLinkedQueue<DeferredLoad> deferredLoads;
-  // Mybatis一级缓存对象
-  protected PerpetualCache localCache;
   // 存储过程输出参数缓存
   protected PerpetualCache localOutputParameterCache;
   protected Configuration configuration;
@@ -63,7 +61,6 @@ public abstract class BaseExecutor implements Executor {
   protected BaseExecutor(Configuration configuration, Transaction transaction) {
     this.transaction = transaction;
     this.deferredLoads = new ConcurrentLinkedQueue<DeferredLoad>();
-    this.localCache = new PerpetualCache("LocalCache");
     this.localOutputParameterCache = new PerpetualCache("LocalOutputParameterCache");
     this.closed = false;
     this.configuration = configuration;
@@ -94,7 +91,6 @@ public abstract class BaseExecutor implements Executor {
     } finally {
       transaction = null;
       deferredLoads = null;
-      localCache = null;
       localOutputParameterCache = null;
       closed = true;
     }
@@ -150,14 +146,8 @@ public abstract class BaseExecutor implements Executor {
     List<E> list;
     try {
       queryStack++;
-      // 从缓存中获取结果
-      list = resultHandler == null ? (List<E>) localCache.getObject(key) : null;
-      if (list != null) {
-        handleLocallyCachedOutputParameters(ms, key, parameter, boundSql);
-      } else {
-        // 缓存中获取不到，则调用queryFromDatabase（）方法从数据库中查询
-        list = queryFromDatabase(ms, parameter, rowBounds, resultHandler, key, boundSql);
-      }
+      // 缓存中获取不到，则调用queryFromDatabase（）方法从数据库中查询
+      list = queryFromDatabase(ms, parameter, rowBounds, resultHandler, key, boundSql);
     } finally {
       queryStack--;
     }
@@ -186,11 +176,11 @@ public abstract class BaseExecutor implements Executor {
     if (closed) {
       throw new ExecutorException("Executor was closed.");
     }
-    DeferredLoad deferredLoad = new DeferredLoad(resultObject, property, key, localCache, configuration, targetType);
+    DeferredLoad deferredLoad = new DeferredLoad(resultObject, property, key, configuration, targetType);
     if (deferredLoad.canLoad()) {
       deferredLoad.load();
     } else {
-      deferredLoads.add(new DeferredLoad(resultObject, property, key, localCache, configuration, targetType));
+      deferredLoads.add(new DeferredLoad(resultObject, property, key, configuration, targetType));
     }
   }
 
@@ -233,7 +223,8 @@ public abstract class BaseExecutor implements Executor {
 
   @Override
   public boolean isCached(MappedStatement ms, CacheKey key) {
-    return localCache.getObject(key) != null;
+//    return localCache.getObject(key) != null;
+      return false;
   }
 
   @Override
@@ -265,7 +256,6 @@ public abstract class BaseExecutor implements Executor {
   @Override
   public void clearLocalCache() {
     if (!closed) {
-      localCache.clear();
       localOutputParameterCache.clear();
     }
   }
@@ -305,34 +295,17 @@ public abstract class BaseExecutor implements Executor {
     StatementUtil.applyTransactionTimeout(statement, statement.getQueryTimeout(), transaction.getTimeout());
   }
 
-  private void handleLocallyCachedOutputParameters(MappedStatement ms, CacheKey key, Object parameter, BoundSql boundSql) {
-    if (ms.getStatementType() == StatementType.CALLABLE) {
-      final Object cachedParameter = localOutputParameterCache.getObject(key);
-      if (cachedParameter != null && parameter != null) {
-        final MetaObject metaCachedParameter = configuration.newMetaObject(cachedParameter);
-        final MetaObject metaParameter = configuration.newMetaObject(parameter);
-        for (ParameterMapping parameterMapping : boundSql.getParameterMappings()) {
-          if (parameterMapping.getMode() != ParameterMode.IN) {
-            final String parameterName = parameterMapping.getProperty();
-            final Object cachedValue = metaCachedParameter.getValue(parameterName);
-            metaParameter.setValue(parameterName, cachedValue);
-          }
-        }
-      }
-    }
-  }
-
   private <E> List<E> queryFromDatabase(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
     List<E> list;
-    localCache.putObject(key, EXECUTION_PLACEHOLDER);
+//    localCache.putObject(key, EXECUTION_PLACEHOLDER);
     try {
       // 调用doQuery（）方法查询
       list = doQuery(ms, parameter, rowBounds, resultHandler, boundSql);
     } finally {
-      localCache.removeObject(key);
+//      localCache.removeObject(key);
     }
     // 缓存查询结果
-    localCache.putObject(key, list);
+//    localCache.putObject(key, list);
     if (ms.getStatementType() == StatementType.CALLABLE) {
       localOutputParameterCache.putObject(key, parameter);
     }
@@ -352,14 +325,14 @@ public abstract class BaseExecutor implements Executor {
   public void setExecutorWrapper(Executor wrapper) {
     this.wrapper = wrapper;
   }
-  
+
   private static class DeferredLoad {
 
     private final MetaObject resultObject;
     private final String property;
     private final Class<?> targetType;
     private final CacheKey key;
-    private final PerpetualCache localCache;
+//    private final PerpetualCache localCache;
     private final ObjectFactory objectFactory;
     private final ResultExtractor resultExtractor;
 
@@ -367,28 +340,29 @@ public abstract class BaseExecutor implements Executor {
     public DeferredLoad(MetaObject resultObject,
                         String property,
                         CacheKey key,
-                        PerpetualCache localCache,
+//                        PerpetualCache localCache,
                         Configuration configuration,
                         Class<?> targetType) {
       this.resultObject = resultObject;
       this.property = property;
       this.key = key;
-      this.localCache = localCache;
+//      this.localCache = localCache;
       this.objectFactory = configuration.getObjectFactory();
       this.resultExtractor = new ResultExtractor(configuration, objectFactory);
       this.targetType = targetType;
     }
 
     public boolean canLoad() {
-      return localCache.getObject(key) != null && localCache.getObject(key) != EXECUTION_PLACEHOLDER;
+//      return localCache.getObject(key) != null && localCache.getObject(key) != EXECUTION_PLACEHOLDER;
+        return false;
     }
 
     public void load() {
-      @SuppressWarnings( "unchecked" )
+//      @SuppressWarnings( "unchecked" )
       // we suppose we get back a List
-      List<Object> list = (List<Object>) localCache.getObject(key);
-      Object value = resultExtractor.extractObjectFromList(list, targetType);
-      resultObject.setValue(property, value);
+//      List<Object> list = (List<Object>) localCache.getObject(key);
+//      Object value = resultExtractor.extractObjectFromList(list, targetType);
+//      resultObject.setValue(property, value);
     }
 
   }

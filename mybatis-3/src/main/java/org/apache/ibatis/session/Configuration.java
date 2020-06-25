@@ -568,9 +568,10 @@ public class Configuration {
     } else {
       executor = new SimpleExecutor(this, transaction);
     }
+    L1CachingExecutor l1CachingExecutor = new L1CachingExecutor(executor);
     // 如果cacheEnabled属性为ture，这使用CachingExecutor对上面创建的Executor进行装饰
     if (cacheEnabled) {
-      executor = new CachingExecutor(executor);
+      executor = new CachingExecutor(l1CachingExecutor);
     }
     // 执行拦截器链的拦截逻辑
     executor = (Executor) interceptorChain.pluginAll(executor);
