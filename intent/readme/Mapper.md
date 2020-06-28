@@ -187,7 +187,8 @@ MethodSignature对象用于获取方法的签名信息，例如Mapper方法的�
 创建完MapperMethod后返回，最后调用MapperMethod的execute()方法
 
 ```java
-import org.apache.ibatis.session.SqlSession; /**
+import org.apache.ibatis.session.SqlSession;
+/**
  * {@linkplain org.apache.ibatis.binding.MapperMethod#execute( SqlSession, Object[])}  
  */
 public class Test{
@@ -200,3 +201,182 @@ MyBatis通过动态代理将Mapper方法的调用转换成通过SqlSession提供
 
 ## SqlSession执行Mapper过程
 
+首先通过DefaultSqlSession的getMapper获取到存储在configuration里面mapperRegistry的Mapper,这个Mapper实际上是一个代理出来的对象，
+即MapperProxy，执行用户自定义的Mapper的所有方法都将会调用MapperProxy的invoke方法。
+
+```java
+import java.lang.reflect.Method;
+/**
+ * {@linkplain org.apache.ibatis.binding.MapperProxy#invoke( Object, Method, Object[])}  
+ */
+public class Test{
+}
+```
+
+在MapperProxy的invoke方法中会先从缓存中取到MapperMethod，如果取不到就生成一个放入缓存，最后执行MapperMethod的execute方法。
+
+```java
+import org.apache.ibatis.session.SqlSession;
+/**
+ * {@linkplain org.apache.ibatis.binding.MapperMethod#execute( SqlSession, Object[])}   
+ */
+public class Test{
+}
+```
+
+MapperMethod的execute判断了当前SQL语句的类型，根据SQL语句不同类型执行不通的操作。
+比如SELECT语句返回多条数据就执行executeForMany函数。
+
+```java
+import org.apache.ibatis.session.SqlSession;
+/**
+ * {@linkplain org.apache.ibatis.binding.MapperMethod#executeForMany( SqlSession, Object[])}   
+ */
+public class Test{
+}
+```
+在executeForMany函数里面调用了SqlSession的selectList方法查询数据。
+而SqlSession的实现为DefaultSqlSession，在DefaultSqlSession的selectList()方法中，
+首先根据Mapper的Id从Configuration对象中获取对应的MappedStatement对象，
+然后以MappedStatement对象作为参数，调用Executor实例的query()方法完成查询操作。
+
+```java
+import org.apache.ibatis.session.RowBounds;
+import org.apache.ibatis.session.SqlSession;
+/**
+ * {@linkplain org.apache.ibatis.session.defaults.DefaultSqlSession#selectList( String, Object, RowBounds)}    
+ */
+public class Test{
+}
+```
+
+然后是装饰者模式包装了原来Executor的CachingExecutor，即二级缓存。
+
+```java
+import org.apache.ibatis.cache.CacheKey;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds; 
+/**
+ * {@linkplain org.apache.ibatis.executor.CachingExecutor#query( MappedStatement, Object, RowBounds, ResultHandler, CacheKey, BoundSql)}     
+ */
+public class Test{
+}
+```
+
+在二级缓存类里面先判断了当前是否有缓存，没有就调用装饰了的Executor执行query方法，有二级缓存的的话判断是否需要刷新二级缓存，
+从MappedStatement对象对应的二级缓存中获取数据，如果缓存数据不存在，则从数据库中查询数据，如果缓存存在则获取缓存返回数据。
+
+下面是BaseExecutor类对query()方法的实现：
+
+```java
+import org.apache.ibatis.cache.CacheKey;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds; 
+/**
+ * {@linkplain org.apache.ibatis.executor.BaseExecutor#query( MappedStatement, Object, RowBounds, ResultHandler, CacheKey, BoundSql)}     
+ */
+public class Test{
+}
+```
+
+在重载的query()方法中，首先从MyBatis一级缓存中获取查询结果，如果缓存中没有，则调用BaseExecutor类的queryFromDatabase()方法从数据库中查询。
+
+```java
+import org.apache.ibatis.cache.CacheKey;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds; 
+/**
+ * {@linkplain org.apache.ibatis.executor.BaseExecutor#queryFromDatabase( MappedStatement, Object, RowBounds, ResultHandler, CacheKey, BoundSql)}      
+ */
+public class Test{
+}
+```
+
+如上面的代码所示，在queryFromDatabase()方法中，调用doQuery()方法进行查询，然后将查询结果进行缓存，
+doQuery()是一个模板方法，由BaseExecutor子类实现。
+在学习MyBatis核心组件时，我们了解到Executor有几个不同的实现，分别为BatchExecutor、SimpleExecutor和ReuseExecutor。
+接下来我们了解一下SimpleExecutor对doQuery()方法的实现，代码如下：
+
+```java
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds; 
+/**
+ * {@linkplain org.apache.ibatis.executor.SimpleExecutor#doQuery( MappedStatement, Object, RowBounds, ResultHandler, BoundSql)}       
+ */
+public class Test{
+}
+```
+
+如上面的代码所示，在SimpleExecutor类的doQuery()方法中，首先调用Configuration对象的newStatementHandler()方法创建StatementHandler对象。
+newStatementHandler()方法返回的是RoutingStatementHandler的实例。
+在RoutingStatementHandler类中，会根据配置Mapper时statementType属性指定的StatementHandler类型创建对应的StatementHandler实例进行处理，
+例如statementType属性值为SIMPLE时，则创建SimpleStatementHandler实例。
+
+StatementHandler对象创建完毕后，接着调用SimpleExecutor类的prepareStatement()方法创建JDBC中的Statement对象，
+然后为Statement对象设置参数操作。Statement对象初始化工作完成后，再调用StatementHandler的query()方法执行查询操作。
+我们先来看一下SimpleExecutor类中prepareStatement()方法的具体内容，代码如下：
+
+```java
+import org.apache.ibatis.executor.statement.StatementHandler;
+import org.apache.ibatis.logging.Log;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds; 
+/**
+ * {@linkplain org.apache.ibatis.executor.SimpleExecutor#prepareStatement( StatementHandler, Log)}        
+ */
+public class Test{
+}
+```
+
+在SimpleExecutor类的prepareStatement()方法中，首先获取JDBC中的Connection对象，然后调用StatementHandler对象的prepare()方法创建Statement对象，
+接着调用StatementHandler对象的parameterize()方法（parameterize()方法中会使用ParameterHandler为Statement对象设置参数）。
+具体逻辑读者可以参考MyBatis对应的源代码。
+
+MyBatis的StatementHandler接口有几个不同的实现类，分别为SimpleStatementHandler、PreparedStatementHandler和CallableStatementHandler。
+MyBatis默认情况下会使用PreparedStatementHandler与数据库交互。接下来我们了解一下PreparedStatementHandler的query()方法的实现，代码如下：
+
+```java
+import org.apache.ibatis.session.ResultHandler;
+import java.sql.Statement; 
+/**
+ * {@linkplain org.apache.ibatis.executor.statement.PreparedStatementHandler#query( Statement, ResultHandler)}         
+ */
+public class Test{
+}
+```
+
+如上面的代码所示，在PreparedStatementHandler的query()方法中，首先调用PreparedStatement对象的execute()方法执行SQL语句，
+然后调用ResultSetHandler的handleResultSets()方法处理结果集。
+ResultSetHandler只有一个默认的实现，即DefaultResultSetHandler类，DefaultResultSetHandler处理结果集的逻辑在第4章介绍MyBatis核心组件时已经介绍过了。
+这里我们简单回顾一下，下面是DefaultResultSetHandler类handleResultSets()方法的关键代码:
+
+```java
+import java.sql.Statement;
+/**
+ * {@linkplain org.apache.ibatis.executor.resultset.DefaultResultSetHandler#handleResultSets( Statement)}          
+ */
+public class Test{
+}
+```
+
+如上面的代码所示，DefaultResultSetHandler类的handleResultSets()方法具体逻辑如下：
+
+（1）首先从Statement对象中获取ResultSet对象，然后将ResultSet包装为ResultSetWrapper对象，
+通过ResultSetWrapper对象能够更方便地获取数据库字段名称以及字段对应的TypeHandler信息。
+
+（2）获取Mapper SQL配置中通过resultMap属性指定的ResultMap信息，一条SQL Mapper配置一般只对应一个ResultMap。
+
+（3）调用handleResultSet()方法对ResultSetWrapper对象进行处理，将结果集转换为Java实体对象，然后将生成的实体对象存放在multipleResults列表中。
+
+（4）调用collapseSingleResultList()方法对multipleResults进行处理，如果只有一个结果集，就返回结果集中的元素，否则返回多个结果集。
+具体细节，读者可参考该方法的源码。
