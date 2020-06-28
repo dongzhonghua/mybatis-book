@@ -21,6 +21,73 @@ MyBatis提供了一个配置参数localCacheScope，用于控制一级缓存的�
 当指定localCacheScope参数值为SESSION时，缓存对整个SqlSession有效，只有执行DML语句（更新语句）时，缓存才会被清除。
 当localCacheScope值为STATEMENT时，缓存仅对当前执行的语句有效，当语句执行完毕后，缓存就会被清空。
 
+### 源码
+
+接下来我们了解一下MyBatis一级缓存的实现细节。一级缓存使用PerpetualCache实例实现，
+在BaseExecutor类中维护了两个PerpetualCache属性，代码如下：
+
+```java
+import org.apache.ibatis.cache.CacheKey;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds; 
+/**
+ * {@linkplain org.apache.ibatis.executor.BaseExecutor#localCache}
+ * {@linkplain org.apache.ibatis.executor.BaseExecutor#localOutputParameterCache}
+ */
+public class Test{
+}
+```
+￼
+其中，localCache属性用于缓存MyBatis查询结果，localOutputParameterCache属性用于缓存存储过程调用结果。
+这两个属性在BaseExecutor构造方法中进行初始化，代码如下：
+
+```java
+import org.apache.ibatis.cache.CacheKey;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds;
+import org.apache.ibatis.transaction.Transaction; 
+/**
+ * {@linkplain org.apache.ibatis.executor.BaseExecutor#BaseExecutor( Configuration, Transaction)} 
+ */
+public class Test{
+}
+```
+
+MyBatis通过CacheKey对象来描述缓存的Key值。
+在进行查询操作时，首先创建CacheKey对象（CacheKey对象决定了缓存的Key与哪些因素有关系）。
+如果两次查询操作CacheKey对象相同，就认为这两次查询执行的是相同的SQL语句。
+CacheKey对象通过BaseExecutor类的createCacheKey()方法创建，代码如下：
+
+```java
+import org.apache.ibatis.cache.CacheKey;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.MappedStatement;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.ResultHandler;
+import org.apache.ibatis.session.RowBounds;
+import org.apache.ibatis.transaction.Transaction; 
+/**
+ * {@linkplain org.apache.ibatis.executor.BaseExecutor#createCacheKey(org.apache.ibatis.mapping.MappedStatement, java.lang.Object, org.apache.ibatis.session.RowBounds, org.apache.ibatis.mapping.BoundSql)  
+ */
+public class Test{
+}
+```
+
+从上面的代码可以看出，缓存的Key与下面这些因素有关：
+（1）Mapper的Id，即Mapper命名空间与<select|update|insert|delete>标签的Id组成的全局限定名。
+（2）查询结果的偏移量及查询的条数。
+（3）具体的SQL语句及SQL语句中需要传递的所有参数。
+（4）MyBatis主配置文件中，通过<environment>标签配置的环境信息对应的Id属性值。
+执行两次查询时，只有上面的信息完全相同时，才会认为两次查询执行的是相同的SQL语句，缓存才会生效。
+
+需要注意的是，如果localCacheScope属性设置为STATEMENT，则每次查询操作完成后，都会调用clearLocalCache()方法清空缓存。
+除此之外，MyBatis会在执行完任意更新语句后清空缓存。
+
 ## 二级缓存
 
 设置方法，在主配置中的settings标签内设置cacheEnable = true
