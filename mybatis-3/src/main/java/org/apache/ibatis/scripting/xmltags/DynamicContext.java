@@ -18,13 +18,13 @@ package org.apache.ibatis.scripting.xmltags;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.ibatis.reflection.MetaObject;
+import org.apache.ibatis.session.Configuration;
+
 import ognl.OgnlContext;
 import ognl.OgnlException;
 import ognl.OgnlRuntime;
 import ognl.PropertyAccessor;
-
-import org.apache.ibatis.reflection.MetaObject;
-import org.apache.ibatis.session.Configuration;
 
 /**
  * @author Clinton Begin
